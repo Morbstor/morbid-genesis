@@ -1,0 +1,241 @@
+<!DOCTYPE html><html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Morbid Genesis</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=EB+Garamond&display=swap" rel="stylesheet"><style>
+:root{--bg:#e8e1d6; --text:#2b1b17; --accent:#5a0f0f; --font-title:'Cinzel',serif; --font-body:'EB Garamond',serif;}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-body);border:6px solid var(--accent)}
+header{text-align:center;padding:60px 20px}
+h1{font-family:var(--font-title);color:var(--accent)}
+.container{max-width:700px;margin:auto;padding:20px}
+.post{border-top:1px solid #b8a99a;padding:20px 0;cursor:pointer}
+button{margin-top:10px;padding:8px 12px;background:var(--accent);color:white;border:none;cursor:pointer}
+.menuBtn{position:fixed;top:10px;right:10px;background:#000;color:#fff;padding:10px;cursor:pointer;z-index:1000}
+.dropdown{position:fixed;top:50px;right:10px;background:#d6cec2;padding:10px;display:none;width:220px;max-height:300px;overflow:auto;z-index:1000}
+.hidden{display:none}
+.divider{border-top:1px solid #5a0f0f;margin:8px 0}
+.adminControls{margin-top:10px}
+.comment{margin-top:10px;font-size:14px;border-top:1px dashed #aaa;padding-top:5px}
+
+
+/* HEADER STYLING */
+.titleBox{
+  display:inline-block;
+  padding:20px 30px;
+  border:2px solid var(--accent);
+  background:rgba(255,255,255,0.4);
+  position:relative;
+}
+
+.titleBox h1{
+  letter-spacing:2px;
+  margin-bottom:10px;
+}
+
+.subtitle{
+  font-style:italic;
+  letter-spacing:1px;
+}
+
+.ornament{
+  width:60%;
+  height:1px;
+  background:var(--accent);
+  margin:10px auto;
+  opacity:0.6;
+}
+
+/* small note under comments */
+.commentNote{
+  font-size:12px;
+  opacity:0.6;
+  margin-top:5px;
+}
+
+</style></head>
+<body><div class="menuBtn" onclick="toggleMenu()">☰</div>
+<div class="dropdown" id="dropdown"></div><header>
+  <div class="titleBox">
+    <h1>Morbid Genesis</h1>
+    <div class="ornament"></div>
+    <p class="subtitle">A private compendium of morbid terrors</p>
+  </div>
+</header><div class="container" id="listView"></div>
+<div class="container hidden" id="postView"></div><div class="container hidden" id="newPostView"><h3>New Story</h3>
+<input id="title" placeholder="Title">
+<textarea id="content"></textarea>
+<input id="tags" placeholder="Tags (comma separated)">
+<button onclick="addPost()">Publish</button>
+</div><div class="container" id="loginBox">
+<h3>Admin Login</h3>
+<input id="email" placeholder="Email">
+<input id="password" type="password" placeholder="Password">
+<button onclick="login()">Login</button>
+</div><script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
+import { getFirestore, collection, addDoc, getDocs, doc, getDoc, updateDoc, deleteDoc, query, orderBy } from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
+
+const firebaseConfig = {
+ apiKey:"AIzaSyCJhO6d92M6Ar0M9gVgVWzgjVK-slP2Iyw",
+ authDomain:"morbid-genesis-final.firebaseapp.com",
+ projectId:"morbid-genesis-final",
+ storageBucket:"morbid-genesis-final.firebasestorage.app",
+ messagingSenderId:"808158899358",
+ appId:"1:808158899358:web:84bf982669ff93482d1f8f"
+};
+
+const app=initializeApp(firebaseConfig);
+const auth=getAuth(app);
+const db=getFirestore(app);
+
+let isAdmin=false;
+
+window.toggleMenu=()=>{
+ const el=document.getElementById('dropdown');
+ el.style.display = el.style.display==='block'?'none':'block';
+}
+
+window.login=()=>{
+ signInWithEmailAndPassword(auth,email.value,password.value).then(()=>{
+  isAdmin=true;
+  loginBox.classList.add('hidden');
+  loadPosts();
+ }).catch(e=>alert(e.message));
+}
+
+window.addPost=async()=>{
+ await addDoc(collection(db,'posts'),{
+  title:title.value,
+  content:content.value,
+  tags:tags.value.split(',').map(t=>t.trim()),
+  created:Date.now(),
+  views:0,
+  comments:[]
+ });
+ goBack();
+ loadPosts();
+}
+
+function goBack(){
+ newPostView.classList.add('hidden');
+ postView.classList.add('hidden');
+ listView.classList.remove('hidden');
+}
+
+async function loadPosts(){
+ const q=query(collection(db,'posts'),orderBy('created','desc'));
+ const snap=await getDocs(q);
+ listView.innerHTML=''; dropdown.innerHTML='';
+
+ if(isAdmin){
+  const newBtn=document.createElement('div');
+  newBtn.innerText="New Post";
+  newBtn.onclick=()=>{
+    listView.classList.add('hidden');
+    newPostView.classList.remove('hidden');
+  };
+  dropdown.appendChild(newBtn);
+
+  const divider=document.createElement('div');
+  divider.className='divider';
+  dropdown.appendChild(divider);
+ }
+
+ snap.forEach(docSnap=>{
+  const p=docSnap.data();
+  const id=docSnap.id;
+  const date=new Date(p.created).toLocaleDateString();
+
+  const menuItem=document.createElement('div');
+  menuItem.innerText=`${p.title} (${date})`;
+  menuItem.onclick=()=>openPost(id);
+  dropdown.appendChild(menuItem);
+
+  const div=document.createElement('div');
+  div.className='post';
+
+  let adminControls='';
+  if(isAdmin){
+   adminControls=`
+   <div class="adminControls">
+     <button onclick="editPost('${id}');event.stopPropagation();">Edit</button>
+     <button onclick="confirmDelete('${id}');event.stopPropagation();">Delete</button>
+   </div>`;
+  }
+
+  div.innerHTML=`
+    <h2>${p.title}</h2>
+    <p>${p.content.slice(0,100)}...</p>
+    ${adminControls}
+  `;
+
+  div.onclick=()=>openPost(id);
+  listView.appendChild(div);
+ });
+}
+
+async function openPost(id){
+ const ref=doc(db,'posts',id);
+ const snap=await getDoc(ref);
+ const p=snap.data();
+
+ listView.classList.add('hidden');
+ newPostView.classList.add('hidden');
+ postView.classList.remove('hidden');
+
+ let adminControls='';
+ if(isAdmin){
+  adminControls=`
+    <div class="adminControls">
+      <button onclick="editPost('${id}')">Edit</button>
+      <button onclick="confirmDelete('${id}')">Delete</button>
+    </div>`;
+ }
+
+ const commentsHtml=(p.comments||[]).map(c=>`<div class='comment'>${c}</div>`).join('');
+
+ postView.innerHTML=`
+ 
+ <h2>${p.title}</h2>
+ <p>${p.content}</p>
+ <h4>Comments</h4>
+ <div class="commentNote">Comments are anonymous</div>
+ ${commentsHtml}
+ <input id="commentInput" placeholder="Write comment and press Enter">
+ ${adminControls}
+ `;
+
+ document.getElementById('commentInput').addEventListener('keydown', async (e)=>{
+  if(e.key==='Enter' && e.target.value){
+    const comments=p.comments||[];
+    comments.push(e.target.value);
+    await updateDoc(ref,{comments});
+    openPost(id);
+  }
+ });
+}
+
+window.confirmDelete=async(id)=>{
+ if(confirm("Are you sure?")){
+  await deleteDoc(doc(db,'posts',id));
+  goBack();
+  loadPosts();
+ }
+}
+
+window.editPost=async(id)=>{
+ const ref=doc(db,'posts',id);
+ const snap=await getDoc(ref);
+ const p=snap.data();
+ const newContent=prompt('Edit',p.content);
+ if(newContent!==null){
+  await updateDoc(ref,{content:newContent});
+  loadPosts();
+ }
+}
+
+loadPosts();
+</script></body>
+</html>
